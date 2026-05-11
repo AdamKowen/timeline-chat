@@ -1,35 +1,76 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useReducer, useState } from "react";
+import { ChatPanel } from "./features/chat/ChatPanel";
+import type { ChatMessage } from "./features/chat/ChatPanel";
+import { TimelinePanel } from "./features/timeline/TimelinePanel";
+import { timelineReducer } from "./features/timeline/timelineReducer";
+import type { ChatResponse, TimelineAction, TimelineEra, TimelineEvent } from "./shared/types/timeline";
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: "assistant", content: "Type 'start' to add a timeline event (mock)." },
+  ]);
+
+  const [events, dispatch] = useReducer(timelineReducer, [] as TimelineEvent[]);
+  const [eras, setEras] = useState<TimelineEra[]>([]);
+
+  function applyActions(actions: TimelineAction[]) {
+    for (const a of actions) dispatch(a);
+  }
+
+  async function onSend(text: string) {
+    const userMsg: ChatMessage = { role: "user", content: text };
+    const loadingMsg: ChatMessage = { role: "assistant", content: "…" };
+
+    const outgoingMessages = [...messages, userMsg];
+
+    setMessages((prev) => [...prev, userMsg, loadingMsg]);
+
+    try {
+      const r = await fetch("http://localhost:8787/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: outgoingMessages,
+          timelineSnapshot: { events, eras },
+        }),
+      });
+
+      const resp = (await r.json()) as ChatResponse;
+
+      setMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = {
+          role: "assistant",
+          content: resp.assistantMessage ?? "(no text)",
+        };
+        return next;
+      });
+
+      if (resp.actions) applyActions(resp.actions);
+      if (resp.eras) setEras(resp.eras);
+    } catch {
+      setMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = {
+          role: "assistant",
+          content: "אירעה שגיאה בשיחה עם המודל. בדוק שהשרת המקומי רץ.",
+        };
+        return next;
+      });
+    }
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
-}
+    <div className="min-h-screen bg-gray-50">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 p-4 md:grid-cols-2">
+        <div className="h-[80vh] rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <ChatPanel messages={messages} onSend={onSend} />
+        </div>
 
-export default App
+        <div className="h-[80vh] rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <TimelinePanel events={events} eras={eras} />
+        </div>
+      </div>
+    </div>
+  );
+}
