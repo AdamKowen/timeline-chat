@@ -31,13 +31,13 @@ export function ChatPanel({
         onPointerDown={onPointerDownDragHandle}
       >
         <div className="flex items-center gap-2">
-          <GripHorizontal size={14} className="text-gray-400" />
-          <h2 className="text-sm font-semibold">Chat</h2>
+          <GripHorizontal size={14} className="text-white/50" />
+          <h2 className="text-sm font-semibold text-white/90">Chat</h2>
         </div>
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onClick={onToggleCollapse}
-          className="rounded-md p-1 text-gray-400 hover:text-gray-600"
+          className="rounded-md p-1 text-white/50 hover:text-white/80 transition-colors"
         >
           {collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
@@ -45,7 +45,14 @@ export function ChatPanel({
 
       {!collapsed && (
         <>
-          <div className="mx-3 h-80 overflow-auto rounded-xl border border-gray-100 bg-gray-50 p-3">
+          {/* Message list */}
+          <div
+            className="mx-3 h-80 overflow-auto rounded-xl p-3"
+            style={{
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.15)",
+            }}
+          >
             <div className="space-y-3">
               {messages.map((m, i) => (
                 <div
@@ -53,9 +60,24 @@ export function ChatPanel({
                   className={[
                     "max-w-[85%] rounded-2xl px-3 py-2 text-sm",
                     m.role === "user"
-                      ? "ml-auto bg-gray-900 text-white"
-                      : "mr-auto bg-white text-gray-900 shadow-sm border border-gray-100",
+                      ? "ml-auto text-white"
+                      : "mr-auto text-gray-900",
                   ].join(" ")}
+                  style={
+                    m.role === "user"
+                      ? {
+                          background: "rgba(30, 80, 160, 0.65)",
+                          backdropFilter: "blur(12px)",
+                          border: "1px solid rgba(100,160,255,0.3)",
+                          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.2)",
+                        }
+                      : {
+                          background: "rgba(255,255,255,0.55)",
+                          backdropFilter: "blur(12px)",
+                          border: "1px solid rgba(255,255,255,0.4)",
+                          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.7)",
+                        }
+                  }
                 >
                   {m.content}
                 </div>
@@ -64,6 +86,7 @@ export function ChatPanel({
             </div>
           </div>
 
+          {/* Input row */}
           <form
             className="m-3 flex gap-2"
             onSubmit={(e) => {
@@ -78,11 +101,22 @@ export function ChatPanel({
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="Ask about history…"
-              className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-gray-900/20"
+              className="flex-1 rounded-xl px-3 py-2 text-sm text-gray-900 placeholder-white/50 outline-none"
+              style={{
+                background: "rgba(255,255,255,0.25)",
+                border: "1px solid rgba(255,255,255,0.35)",
+                backdropFilter: "blur(12px)",
+              }}
             />
             <button
               type="submit"
-              className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+              className="rounded-xl px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              style={{
+                background: "rgba(25,75,155,0.70)",
+                border: "1px solid rgba(100,160,255,0.3)",
+                backdropFilter: "blur(12px)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.2)",
+              }}
             >
               Send
             </button>

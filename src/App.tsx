@@ -68,22 +68,32 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-gray-50">
-      {/* Timeline fills the full screen */}
+    <div className="h-screen w-screen overflow-hidden">
+      {/* Sky background — fixed so it stays put while timeline scrolls */}
+      <div
+        className="fixed inset-0 -z-10"
+        style={{
+          background:
+            "linear-gradient(to bottom, #1a6fb5 0%, #3d94d0 28%, #71b8e8 58%, #b8ddf5 100%)",
+        }}
+      />
+
+      {/* Timeline — scrollable, transparent so sky shows through */}
       <div className="h-full w-full overflow-auto">
         <div className="mx-auto max-w-3xl px-4 py-8">
           <TimelinePanel events={events} eras={eras} />
         </div>
       </div>
 
-      {/* Floating draggable chat panel */}
+      {/* Floating glass chat panel */}
       <motion.div
         drag
         dragControls={dragControls}
         dragListener={false}
         dragMomentum={false}
         dragElastic={0}
-        className="fixed bottom-6 right-6 z-50 w-96 rounded-2xl border border-gray-200 bg-white shadow-2xl"
+        className="fixed bottom-6 right-6 z-50 w-96 rounded-2xl border border-white/30 shadow-[0_20px_60px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.55)]"
+        style={{ backdropFilter: "blur(28px)", background: "rgba(255,255,255,0.18)" }}
       >
         <ChatPanel
           messages={messages}

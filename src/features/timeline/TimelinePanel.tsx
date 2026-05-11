@@ -4,78 +4,76 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ExternalLink, Info } from "lucide-react";
 import type { TimelineEra, TimelineEvent } from "../../shared/types/timeline";
 
-function toComparable(label: string): string {
-  // NOTE: For ISO (YYYY-MM-DD) and YYYY this works reasonably for now.
-  // Later we will support BCE / circa / unknown parsing properly.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(label)) return label;
-  if (/^\d{4}$/.test(label)) return `${label}-01-01`;
-  return "9999-12-31"; // Unknown goes last
+const CARD_MIN_SPACING = 130;
+const TOP_PAD = 70;
+const BOTTOM_PAD = 70;
+
+function parseYear(dateLabel: string): number {
+  const m = dateLabel.match(/^(-?\d+)/);
+  return m ? parseInt(m[1]) : 9999;
 }
 
-function inRange(dateLabel: string, start: string, end: string): boolean {
-  const d = toComparable(dateLabel);
-  const s = toComparable(start);
-  const e = toComparable(end);
-  return d >= s && d <= e;
+function getTickInterval(range: number): number {
+  if (range <= 10)    return 1;
+  if (range <= 30)    return 5;
+  if (range <= 100)   return 10;
+  if (range <= 300)   return 25;
+  if (range <= 1000)  return 100;
+  if (range <= 3000)  return 250;
+  if (range <= 10000) return 500;
+  return 1000;
 }
 
-function confidenceClasses(conf: TimelineEvent["confidence"]) {
+function eraFill(bgClass?: string): string {
+  const map: Record<string, string> = {
+    "bg-amber-50":  "#f59e0b",
+    "bg-blue-50":   "#3b82f6",
+    "bg-green-50":  "#22c55e",
+    "bg-purple-50": "#a855f7",
+    "bg-rose-50":   "#f43f5e",
+    "bg-slate-50":  "#94a3b8",
+  };
+  return map[bgClass ?? ""] ?? "#94a3b8";
+}
+
+function confidenceBorder(conf: TimelineEvent["confidence"]): string {
   switch (conf) {
-    case "high":
-      return "border-green-500/40 bg-green-500/5";
-    case "medium":
-      return "border-yellow-500/40 bg-yellow-500/5";
-    case "low":
-      return "border-red-500/40 bg-red-500/5";
-    default:
-      return "border-white/10 bg-white/5";
+    case "high":   return "rgba(74,222,128,0.55)";
+    case "medium": return "rgba(251,191,36,0.55)";
+    case "low":    return "rgba(248,113,113,0.55)";
+    default:       return "rgba(255,255,255,0.25)";
   }
 }
 
-function lineStyle(conf: TimelineEvent["confidence"]) {
-  return conf === "high"
-    ? "border-solid"
-    : conf === "medium"
-    ? "border-dashed"
-    : "border-dotted";
+function lineStyleClass(conf: TimelineEvent["confidence"]): string {
+  if (conf === "high")   return "border-solid";
+  if (conf === "medium") return "border-dashed";
+  return "border-dotted";
 }
 
 function SourcesButton({ event }: { event: TimelineEvent }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const sources = useMemo(() => event.sources ?? [], [event.sources]);
-
-  const [pos, setPos] = useState<{ top: number; right: number }>({
-    top: 0,
-    right: 0,
-  });
+  const [pos, setPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
 
   useEffect(() => {
     if (!open) return;
-
-    // NOTE: Measure button position and place the menu in a fixed portal layer.
     const update = () => {
       const el = btnRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      const top = r.bottom + 8;
-      const right = window.innerWidth - r.right;
-      setPos({ top, right });
+      setPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
     };
-
     update();
-
-    // NOTE: Keep position correct on scroll/resize (capture scroll from any container).
     window.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
-
     return () => {
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);
     };
   }, [open]);
 
-  // NOTE: Avoid SSR crashes if used in a non-browser environment.
   const canPortal = typeof document !== "undefined" && !!document.body;
 
   return (
@@ -83,7 +81,13 @@ function SourcesButton({ event }: { event: TimelineEvent }) {
       <button
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-gray-700 transition-opacity hover:opacity-80"
+        style={{
+          background: "rgba(255,255,255,0.45)",
+          border: "1px solid rgba(255,255,255,0.5)",
+          backdropFilter: "blur(8px)",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.7)",
+        }}
         title="View sources"
       >
         <Info size={14} />
@@ -99,19 +103,22 @@ function SourcesButton({ event }: { event: TimelineEvent }) {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.15 }}
-                  style={{ top: pos.top, right: pos.right }}
-                  className="fixed z-[9999] w-80 rounded-xl border border-gray-200 bg-white p-3 shadow-lg"
+                  style={{
+                    top: pos.top,
+                    right: pos.right,
+                    background: "rgba(255,255,255,0.80)",
+                    backdropFilter: "blur(24px)",
+                    border: "1px solid rgba(255,255,255,0.5)",
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.8)",
+                  }}
+                  className="fixed z-[9999] w-80 rounded-xl p-3"
                 >
                   <div className="mb-2 flex items-center justify-between">
-                    <div className="text-sm font-semibold">Sources</div>
-                    <button
-                      onClick={() => setOpen(false)}
-                      className="text-xs text-gray-500 hover:text-gray-700"
-                    >
+                    <div className="text-sm font-semibold text-gray-800">Sources</div>
+                    <button onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:text-gray-700">
                       close
                     </button>
                   </div>
-
                   {sources.length === 0 ? (
                     <div className="text-sm text-gray-600">No sources.</div>
                   ) : (
@@ -119,39 +126,26 @@ function SourcesButton({ event }: { event: TimelineEvent }) {
                       {sources.map((s, idx) => (
                         <li
                           key={`${s.url ?? "nosrc"}_${idx}`}
-                          className="rounded-lg border border-gray-100 p-2"
+                          className="rounded-lg p-2"
+                          style={{ background: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.6)" }}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <div className="text-sm font-medium">{s.title}</div>
-                              <div className="mt-0.5 text-xs text-gray-600">
-                                {s.kind} • {s.confidence}
-                              </div>
+                              <div className="text-sm font-medium text-gray-800">{s.title}</div>
+                              <div className="mt-0.5 text-xs text-gray-500">{s.kind} · {s.confidence}</div>
                             </div>
-
                             {s.url && s.url.startsWith("http") && (
-                              <a
-                                href={s.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                              >
+                              <a href={s.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline">
                                 open <ExternalLink size={12} />
                               </a>
                             )}
                           </div>
-
-                          {s.note && (
-                            <div className="mt-1 text-xs text-gray-600">{s.note}</div>
-                          )}
+                          {s.note && <div className="mt-1 text-xs text-gray-500">{s.note}</div>}
                         </li>
                       ))}
                     </ul>
                   )}
-
-                  <div className="mt-3 text-[11px] text-gray-500">
-                    Note: sources are model-suggested. Verify before trusting.
-                  </div>
+                  <div className="mt-3 text-[11px] text-gray-400">Sources are model-suggested. Verify before trusting.</div>
                 </motion.div>
               )}
             </AnimatePresence>,
@@ -162,173 +156,224 @@ function SourcesButton({ event }: { event: TimelineEvent }) {
   );
 }
 
-const cardVariants = {
-  hidden: { opacity: 0, y: 12, scale: 0.97 },
-  visible: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 400, damping: 28 } },
-  exit: { opacity: 0, scale: 0.96, transition: { duration: 0.12 } },
-};
-
-const listVariants = {
-  visible: { transition: { staggerChildren: 0.055 } },
-};
-
 function EventCard({ event }: { event: TimelineEvent }) {
+  const [open, setOpen] = useState(false);
+
   return (
     <motion.div
-      key={event.id}
       layout
-      variants={cardVariants}
-      initial="hidden"
-      animate="visible"
-      exit="exit"
-      className="relative pl-10"
+      onHoverStart={() => setOpen(true)}
+      onHoverEnd={() => setOpen(false)}
+      className="cursor-default rounded-xl"
+      style={{
+        background: "rgba(255,255,255,0.22)",
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        border: `1px solid ${confidenceBorder(event.confidence)}`,
+        boxShadow: "0 4px 16px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.55)",
+      }}
     >
-      {/* Dot */}
-      <div className="absolute left-2.5 top-4 h-3 w-3 rounded-full bg-gray-900" />
-
-      <div
-        className={[
-          "rounded-xl border p-3 shadow-sm bg-white",
-          confidenceClasses(event.confidence),
-        ].join(" ")}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-sm text-gray-500">{event.dateLabel}</div>
-            <div className="text-base font-semibold">{event.title}</div>
-          </div>
-
-          <SourcesButton event={event} />
+      <div className="px-3 py-2.5">
+        <div className="text-[11px] font-medium" style={{ color: "rgba(255,255,255,0.75)" }}>
+          {event.dateLabel}
         </div>
-
-        <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
-          <div
-            className={[
-              "h-0.5 w-10 border-t border-gray-400",
-              lineStyle(event.confidence),
-            ].join(" ")}
-          />
-          <span>
-            confidence: <span className="font-medium">{event.confidence}</span>
-          </span>
+        <div className="mt-0.5 text-sm font-semibold leading-snug text-gray-900">
+          {event.title}
         </div>
-
-        <p className="mt-2 text-sm text-gray-700">{event.summary}</p>
       </div>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18 }}
+            style={{ overflow: "hidden" }}
+          >
+            <div className="px-3 pb-3">
+              <div className="mb-1.5 flex items-center gap-2 text-xs text-gray-500">
+                <div className={`h-0.5 w-6 border-t border-gray-400/60 ${lineStyleClass(event.confidence)}`} />
+                <span>confidence: <span className="font-medium">{event.confidence}</span></span>
+              </div>
+              <p className="text-xs leading-relaxed text-gray-700">{event.summary}</p>
+              {(event.sources?.length ?? 0) > 0 && (
+                <div className="mt-2"><SourcesButton event={event} /></div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
 
-export function TimelinePanel({
-  events,
-  eras,
-}: {
-  events: TimelineEvent[];
-  eras: TimelineEra[];
-}) {
-  // NOTE: Higher priority eras appear first (useful when eras overlap).
-  const sortedEras = useMemo(() => {
-    return [...eras].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-  }, [eras]);
+export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras: TimelineEra[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [cw, setCw] = useState(760);
 
-  const { eraSections, notInAnyEra } = useMemo(() => {
-    // NOTE: Compute everything in a pure way (no refs mutation during render).
-    const used = new Set<string>();
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(([entry]) => setCw(entry.contentRect.width));
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
-    const sections = sortedEras
-      .map((era) => {
-        const eraEvents = events.filter((e) =>
-          inRange(e.dateLabel, era.startLabel, era.endLabel)
-        );
+  const cx = cw / 2;
+  const cardW = Math.max(160, Math.floor(cx) - 32);
 
-        if (eraEvents.length === 0) return null;
+  const sorted = useMemo(
+    () => [...events].sort((a, b) => parseYear(a.dateLabel) - parseYear(b.dateLabel)),
+    [events]
+  );
 
-        for (const e of eraEvents) used.add(e.id);
+  const { minYear, maxYear, range, baseH, yearToY } = useMemo(() => {
+    const validYears = sorted.map(e => parseYear(e.dateLabel)).filter(y => y !== 9999);
+    if (validYears.length === 0) {
+      return { minYear: 2000, maxYear: 2024, range: 24, baseH: 500, yearToY: () => TOP_PAD };
+    }
+    const min = Math.min(...validYears);
+    const max = Math.max(...validYears);
+    const r = Math.max(max - min, 1);
+    const h = Math.max(500, sorted.length * CARD_MIN_SPACING);
+    return {
+      minYear: min,
+      maxYear: max,
+      range: r,
+      baseH: h,
+      yearToY: (y: number) => TOP_PAD + ((y - min) / r) * h,
+    };
+  }, [sorted]);
 
-        return { era, eraEvents };
-      })
-      .filter(Boolean) as Array<{ era: TimelineEra; eraEvents: TimelineEvent[] }>;
+  const positioned = useMemo(() => {
+    const items = sorted.map((event, i) => ({
+      event,
+      trueY: yearToY(parseYear(event.dateLabel)),
+      cardY: yearToY(parseYear(event.dateLabel)),
+      side: (i % 2 === 0 ? "left" : "right") as "left" | "right",
+    }));
 
-    const remaining = events.filter((e) => !used.has(e.id));
+    for (const side of ["left", "right"] as const) {
+      const group = items.filter(it => it.side === side);
+      for (let i = 1; i < group.length; i++) {
+        if (group[i].cardY < group[i - 1].cardY + CARD_MIN_SPACING) {
+          group[i].cardY = group[i - 1].cardY + CARD_MIN_SPACING;
+        }
+      }
+    }
+    return items;
+  }, [sorted, yearToY]);
 
-    return { eraSections: sections, notInAnyEra: remaining };
-  }, [events, sortedEras]);
+  const totalH = positioned.length === 0
+    ? 300
+    : Math.max(...positioned.map(p => p.cardY)) + BOTTOM_PAD + 110;
+
+  const ticks = useMemo(() => {
+    const interval = getTickInterval(range);
+    const first = Math.ceil(minYear / interval) * interval;
+    const result: number[] = [];
+    for (let y = first; y <= maxYear; y += interval) result.push(y);
+    return result;
+  }, [minYear, maxYear, range]);
+
+  const cpOffset = Math.min(80, cardW * 0.35);
+
+  if (events.length === 0) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <p className="text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>
+          Ask about a historical topic to build the timeline
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full w-full p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Timeline</h2>
-        <span className="text-xs text-gray-500">
-          {events.length} events • {eras.length} eras
-        </span>
-      </div>
+    <div ref={containerRef} className="relative w-full" style={{ height: totalH }}>
+      <svg className="pointer-events-none absolute inset-0" width={cw} height={totalH}>
+        <defs>
+          <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="white" stopOpacity="0"   />
+            <stop offset="5%"   stopColor="white" stopOpacity="0.55"/>
+            <stop offset="95%"  stopColor="white" stopOpacity="0.55"/>
+            <stop offset="100%" stopColor="white" stopOpacity="0"   />
+          </linearGradient>
+        </defs>
 
-      <div className="space-y-4">
-        {eraSections.map(({ era, eraEvents }) => {
+        {/* Era color bands */}
+        {eras.map(era => {
+          const y1 = yearToY(parseYear(era.startLabel));
+          const y2 = yearToY(parseYear(era.endLabel));
+          if (y2 <= y1) return null;
           return (
-            <section key={era.id} className="relative">
-              {/* Era backdrop (NOT a card container) */}
-              <div
-                className={[
-                  "pointer-events-none absolute inset-0 rounded-3xl",
-                  era.bgClass ?? "bg-white",
-                  "ring-1 ring-black/5",
-                ].join(" ")}
-                aria-hidden="true"
-              />
-
-              {/* Era header */}
-              <div className="relative z-10 px-4 pt-3 pb-2 flex items-baseline justify-between">
-                <div className="text-sm font-semibold">{era.title}</div>
-                <div className="text-xs text-gray-500">
-                  {era.startLabel} → {era.endLabel}
-                </div>
-              </div>
-
-              {/* Era content */}
-              <div className="relative z-10 px-4 pb-4">
-                {/* Section vertical line */}
-                <div className="absolute bottom-0 left-7 top-0 w-px bg-gray-200" />
-
-                <motion.div className="space-y-3 pl-6" variants={listVariants} initial="hidden" animate="visible">
-                  <AnimatePresence initial={false}>
-                    {eraEvents.map((event) => (
-                      <EventCard key={event.id} event={event} />
-                    ))}
-                  </AnimatePresence>
-                </motion.div>
-              </div>
-            </section>
+            <rect
+              key={era.id}
+              x={cx - 7.5} y={y1}
+              width={15} height={Math.max(y2 - y1, 4)}
+              fill={eraFill(era.bgClass)}
+              opacity={0.35}
+              rx={7.5}
+            />
           );
         })}
 
-        {/* Uncategorized events (not in any era) */}
-        {notInAnyEra.length > 0 ? (
-          <section className="relative">
-            <div
-              className="pointer-events-none absolute inset-0 rounded-3xl bg-white ring-1 ring-black/5"
-              aria-hidden="true"
-            />
+        {/* Main line — 15px, white gradient */}
+        <rect
+          x={cx - 7.5}
+          y={TOP_PAD - 32}
+          width={15}
+          height={totalH - BOTTOM_PAD + 32 - (TOP_PAD - 32)}
+          fill="url(#lineGrad)"
+          rx={7.5}
+        />
 
-            <div className="relative z-10 px-4 pt-3 pb-2 flex items-baseline justify-between">
-              <div className="text-sm font-semibold">Uncategorized</div>
-              <div className="text-xs text-gray-500">not in any era</div>
-            </div>
+        {/* Event dots with year labels — no connectors */}
+        {positioned.map(({ event, trueY: ty, side }) => {
+          const year = parseYear(event.dateLabel);
+          const labelX  = side === "left" ? cx + 22 : cx - 22;
+          const anchor  = side === "left" ? "start"  : "end";
 
-            <div className="relative z-10 px-4 pb-4">
-              <div className="absolute bottom-0 left-7 top-0 w-px bg-gray-200" />
+          return (
+            <g key={event.id}>
+              {/* Dot halo */}
+              <circle cx={cx} cy={ty} r={11}  fill="rgba(237,117,72,0.18)" />
+              {/* Dot */}
+              <circle cx={cx} cy={ty} r={8}   fill="rgb(237,117,72)" />
+              {/* Dot centre */}
+              <circle cx={cx} cy={ty} r={3.5} fill="rgba(255,255,255,0.9)" />
+              {/* Year label */}
+              <text
+                x={labelX}
+                y={ty + 4}
+                textAnchor={anchor}
+                fontSize={11}
+                fontWeight="600"
+                fill="rgba(255,255,255,0.75)"
+                fontFamily="system-ui, sans-serif"
+              >
+                {year < 0 ? `${Math.abs(year)} BCE` : year}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
 
-              <motion.div className="space-y-3 pl-6" variants={listVariants} initial="hidden" animate="visible">
-                <AnimatePresence initial={false}>
-                  {notInAnyEra.map((event) => (
-                    <EventCard key={event.id} event={event} />
-                  ))}
-                </AnimatePresence>
-              </motion.div>
-            </div>
-          </section>
-        ) : null}
-      </div>
+      {/* Event cards */}
+      {positioned.map(({ event, cardY, side }) => (
+        <div
+          key={event.id}
+          className="absolute"
+          style={{
+            top: cardY,
+            ...(side === "left"
+              ? { right: cx + 16, width: cardW }
+              : { left:  cx + 16, width: cardW }),
+          }}
+        >
+          <EventCard event={event} />
+        </div>
+      ))}
     </div>
   );
 }

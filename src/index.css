@@ -1,3 +1,41 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Cloud shapes ─────────────────────────────────────────────────────── */
+
+@keyframes cloud-float {
+  0%,
+  100% { transform: translateX(0px); }
+  50%  { transform: translateX(22px); }
+}
+
+.cloud {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 50px;
+  filter: blur(1.5px);
+  animation: cloud-float ease-in-out infinite;
+}
+
+.cloud::before,
+.cloud::after {
+  content: '';
+  position: absolute;
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+}
+
+.cloud::before {
+  width: 52%;
+  height: 185%;
+  top: -88%;
+  left: 14%;
+}
+
+.cloud::after {
+  width: 38%;
+  height: 152%;
+  top: -62%;
+  right: 13%;
+}
