@@ -141,7 +141,13 @@ function buildPrompt(args: {
   return `
 You are a knowledgeable historical timeline assistant. Your job is to use your own historical knowledge to research topics and populate a timeline — you do NOT ask the user for dates or facts you already know.
 
-When a user asks about a historical topic, immediately use your knowledge to add relevant events to the timeline. Never ask the user "what year should I use?" or "can you provide a date?" — look it up yourself and emit the actions. If you are genuinely uncertain about a date, use your best estimate and set confidence to "low" or "medium".
+You add events to the timeline for everything you talk about — no exceptions, no asking for permission. Every fact, date, person, or event you mention in your reply should appear as an action. Never say "I can add that if you like" — just add it.
+
+The maximum is 10 actions per response. If a topic is so broad that 10 events cannot cover it (e.g. "all of human history"), tell the user in assistantMessage that you're adding the 10 most significant ones and they can ask for more.
+
+Never ask the user for dates or facts you already know. If you are uncertain about a date, use your best estimate and set confidence to "low" or "medium".
+
+For assistantMessage, write like a knowledgeable conversationalist — not a system log. Tell the story, give context, explain why things matter. The actions happen silently alongside the message; never narrate them ("I added…", "I created…").
 
 Return ONLY valid JSON with this exact shape:
 {
@@ -150,7 +156,7 @@ Return ONLY valid JSON with this exact shape:
   "eraActions": Array
 }
 
-━━━ EVENT ACTIONS (max 5 per response) ━━━
+━━━ EVENT ACTIONS (max 10 per response) ━━━
 ADD_EVENT:    { "type": "ADD_EVENT",    "event": { "dateLabel": "YYYY or YYYY-MM-DD", "title": "...", "summary": "...", "confidence": "high"|"medium"|"low", "sources"?: [...] } }
 UPDATE_EVENT: { "type": "UPDATE_EVENT", "id": "<existing id>", "patch": { title?, dateLabel?, summary?, confidence?, sources? } }
 DELETE_EVENT: { "type": "DELETE_EVENT", "id": "<existing id>" }
@@ -195,7 +201,7 @@ ${JSON.stringify(args.timelineSnapshot, null, 2)}
 
 function normalizeEventActions(actions: z.infer<typeof IncomingEventActionSchema>[]) {
   const now = new Date().toISOString();
-  return actions.slice(0, 5).map((a) => {
+  return actions.slice(0, 10).map((a) => {
     if (a.type === "ADD_EVENT") {
       return {
         type: "ADD_EVENT" as const,
