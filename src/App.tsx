@@ -1,10 +1,35 @@
-import { useReducer, useState } from "react";
-import { motion, useDragControls } from "framer-motion";
+import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { animate, motion, useDragControls, useMotionValue } from "framer-motion";
 import { ChatPanel } from "./features/chat/ChatPanel";
 import type { ChatMessage } from "./features/chat/ChatPanel";
 import { TimelinePanel } from "./features/timeline/TimelinePanel";
 import { eraReducer, timelineReducer } from "./features/timeline/timelineReducer";
 import type { ChatResponse, TimelineAction, TimelineEraAction, TimelineEvent } from "./shared/types/timeline";
+
+const PANEL_W = 384; // w-96
+const MARGIN = 24;
+
+type Corner = "tl" | "tr" | "bl" | "br";
+
+function nearestCorner(rect: DOMRect): Corner {
+  const isRight = rect.left + rect.width / 2 > window.innerWidth / 2;
+  const isBottom = rect.top + rect.height / 2 > window.innerHeight / 2;
+  if (isRight && isBottom) return "br";
+  if (!isRight && isBottom) return "bl";
+  if (isRight) return "tr";
+  return "tl";
+}
+
+function cornerPos(corner: Corner, h: number) {
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  switch (corner) {
+    case "tl": return { x: MARGIN,               y: MARGIN };
+    case "tr": return { x: W - PANEL_W - MARGIN, y: MARGIN };
+    case "bl": return { x: MARGIN,               y: H - h - MARGIN };
+    case "br": return { x: W - PANEL_W - MARGIN, y: H - h - MARGIN };
+  }
+}
 
 export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -14,7 +39,44 @@ export default function App() {
   const [events, dispatchEvent] = useReducer(timelineReducer, [] as TimelineEvent[]);
   const [eras, dispatchEra] = useReducer(eraReducer, []);
   const [chatCollapsed, setChatCollapsed] = useState(false);
+
   const dragControls = useDragControls();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const panelX = useMotionValue(window.innerWidth - PANEL_W - MARGIN);
+  const panelY = useMotionValue(window.innerHeight - 460 - MARGIN);
+  const currentCorner = useRef<Corner>("br");
+
+  const SPRING = { type: "spring", stiffness: 200, damping: 30, mass: 1 } as const;
+
+  useLayoutEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    panelY.set(window.innerHeight - el.getBoundingClientRect().height - MARGIN);
+  }, [panelY]);
+
+  // Re-snap to same corner whenever the panel height changes (collapse/expand)
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    const frame = requestAnimationFrame(() => {
+      const rect = el.getBoundingClientRect();
+      const pos = cornerPos(currentCorner.current, rect.height);
+      animate(panelX, pos.x, SPRING);
+      animate(panelY, pos.y, SPRING);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [chatCollapsed, panelX, panelY]);
+
+  function snapToCorner() {
+    const el = panelRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const corner = nearestCorner(rect);
+    currentCorner.current = corner;
+    const pos = cornerPos(corner, rect.height);
+    animate(panelX, pos.x, SPRING);
+    animate(panelY, pos.y, SPRING);
+  }
 
   function applyActions(actions: TimelineAction[]) {
     for (const a of actions) dispatchEvent(a);
@@ -79,7 +141,7 @@ export default function App() {
       />
 
       {/* Timeline — scrollable, transparent so sky shows through */}
-      <div className="h-full w-full overflow-auto">
+      <div className="h-full w-full overflow-x-hidden overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-8">
           <TimelinePanel events={events} eras={eras} />
         </div>
@@ -87,13 +149,20 @@ export default function App() {
 
       {/* Floating glass chat panel */}
       <motion.div
+        ref={panelRef}
         drag
         dragControls={dragControls}
         dragListener={false}
         dragMomentum={false}
         dragElastic={0}
-        className="fixed bottom-6 right-6 z-50 w-96 rounded-2xl border border-white/30 shadow-[0_20px_60px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.55)]"
-        style={{ backdropFilter: "blur(28px)", background: "rgba(255,255,255,0.18)" }}
+        onDragEnd={snapToCorner}
+        className="fixed top-0 left-0 z-50 w-96 rounded-2xl border border-white/30 shadow-[0_20px_60px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.55)]"
+        style={{
+          x: panelX,
+          y: panelY,
+          backdropFilter: "blur(28px)",
+          background: "rgba(255,255,255,0.18)",
+        }}
       >
         <ChatPanel
           messages={messages}

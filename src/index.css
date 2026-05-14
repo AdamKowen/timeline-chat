@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+html, body, #root {
+  background-color: #1a6fb5;
+  height: 100%;
+}
+
+*, *::before, *::after {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* ── Cloud shapes ─────────────────────────────────────────────────────── */
 
 @keyframes cloud-float {

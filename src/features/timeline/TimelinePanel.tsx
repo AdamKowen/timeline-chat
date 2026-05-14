@@ -24,16 +24,14 @@ function getTickInterval(range: number): number {
   return 1000;
 }
 
-function eraFill(bgClass?: string): string {
-  const map: Record<string, string> = {
-    "bg-amber-50":  "#f59e0b",
-    "bg-blue-50":   "#3b82f6",
-    "bg-green-50":  "#22c55e",
-    "bg-purple-50": "#a855f7",
-    "bg-rose-50":   "#f43f5e",
-    "bg-slate-50":  "#94a3b8",
+function eraColor(id: string) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
+  const hue = Math.abs(h) % 360;
+  return {
+    bg:   `hsl(${hue}, 48%, 52%)`,
+    text: `hsl(${hue}, 30%, 92%)`,
   };
-  return map[bgClass ?? ""] ?? "#94a3b8";
 }
 
 function confidenceBorder(conf: TimelineEvent["confidence"]): string {
@@ -164,20 +162,22 @@ function EventCard({ event }: { event: TimelineEvent }) {
       layout
       onHoverStart={() => setOpen(true)}
       onHoverEnd={() => setOpen(false)}
-      className="cursor-default rounded-xl"
+      whileHover={{ scale: 1.06 }}
+      transition={{ type: "spring", stiffness: 320, damping: 22 }}
+      className="cursor-default rounded-3xl"
       style={{
         background: "rgba(255,255,255,0.22)",
         backdropFilter: "blur(16px)",
         WebkitBackdropFilter: "blur(16px)",
-        border: `1px solid ${confidenceBorder(event.confidence)}`,
+        border: "1px solid rgba(255,255,255,0.25)",
         boxShadow: "0 4px 16px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.55)",
       }}
     >
-      <div className="px-3 py-2.5">
+      <div className="px-4 py-3.5">
         <div className="text-[11px] font-medium" style={{ color: "rgba(255,255,255,0.75)" }}>
           {event.dateLabel}
         </div>
-        <div className="mt-0.5 text-sm font-semibold leading-snug text-gray-900">
+        <div className="mt-0.5 text-sm font-semibold leading-snug text-white">
           {event.title}
         </div>
       </div>
@@ -191,12 +191,12 @@ function EventCard({ event }: { event: TimelineEvent }) {
             transition={{ duration: 0.18 }}
             style={{ overflow: "hidden" }}
           >
-            <div className="px-3 pb-3">
-              <div className="mb-1.5 flex items-center gap-2 text-xs text-gray-500">
-                <div className={`h-0.5 w-6 border-t border-gray-400/60 ${lineStyleClass(event.confidence)}`} />
+            <div className="px-4 pb-4">
+              <div className="mb-1.5 flex items-center gap-2 text-xs text-white/60">
+                <div className={`h-0.5 w-6 border-t border-white/40 ${lineStyleClass(event.confidence)}`} />
                 <span>confidence: <span className="font-medium">{event.confidence}</span></span>
               </div>
-              <p className="text-xs leading-relaxed text-gray-700">{event.summary}</p>
+              <p className="text-xs leading-relaxed text-white/85">{event.summary}</p>
               {(event.sources?.length ?? 0) > 0 && (
                 <div className="mt-2"><SourcesButton event={event} /></div>
               )}
@@ -211,6 +211,7 @@ function EventCard({ event }: { event: TimelineEvent }) {
 export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras: TimelineEra[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [cw, setCw] = useState(760);
+  const [hoveredEraId, setHoveredEraId] = useState<string | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -221,7 +222,7 @@ export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras:
   }, []);
 
   const cx = cw / 2;
-  const cardW = Math.max(160, Math.floor(cx) - 32);
+  const cardW = Math.max(130, Math.floor(cx) - 60);
 
   const sorted = useMemo(
     () => [...events].sort((a, b) => parseYear(a.dateLabel) - parseYear(b.dateLabel)),
@@ -265,6 +266,27 @@ export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras:
     return items;
   }, [sorted, yearToY]);
 
+  const D_NORMAL = 40;
+  const D_HOVERED = 72;
+  const EXPANSION = D_HOVERED - D_NORMAL;
+
+  const eraShifts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const { event, trueY } of positioned) {
+      const year = parseYear(event.dateLabel);
+      const era = eras.find(
+        e => year >= parseYear(e.startLabel) && year <= parseYear(e.endLabel)
+      );
+      if (!era || hoveredEraId !== era.id) { map.set(event.id, 0); continue; }
+      const eraY1 = yearToY(parseYear(era.startLabel));
+      const eraY2 = yearToY(parseYear(era.endLabel));
+      const eraH = eraY2 - eraY1;
+      const t = eraH > 0 ? (trueY - eraY1) / eraH : 0.5;
+      map.set(event.id, EXPANSION * (t - 0.5));
+    }
+    return map;
+  }, [positioned, eras, hoveredEraId, yearToY]);
+
   const totalH = positioned.length === 0
     ? 300
     : Math.max(...positioned.map(p => p.cardY)) + BOTTOM_PAD + 110;
@@ -291,17 +313,76 @@ export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras:
 
   return (
     <div ref={containerRef} className="relative w-full" style={{ height: totalH }}>
+
+      {/* Era blobs — full-bleed SVG, painted top→bottom; motion.path animates curve depth on hover */}
+      <svg
+        className="absolute"
+        style={{ top: 0, left: "calc(50% - 50vw)", width: "100vw", height: totalH }}
+        viewBox={`0 0 100 ${totalH}`}
+        preserveAspectRatio="none"
+      >
+        {(() => {
+          const sorted = [...eras]
+            .map(era => ({ era, y1: yearToY(parseYear(era.startLabel)), y2: yearToY(parseYear(era.endLabel)) }))
+            .filter(e => e.y2 > e.y1)
+            .sort((a, b) => a.y1 - b.y1);
+          return sorted.map(({ era, y1, y2 }, idx) => {
+            const hovered = hoveredEraId === era.id;
+            const d = hovered ? 72 : 40;
+            const isFirst = idx === 0;
+            const isLast  = idx === sorted.length - 1;
+            const top    = isFirst ? `M 0,0 L 100,0`               : `M 0,${y1} Q 50,${y1 - d} 100,${y1}`;
+            const bottom = isLast  ? `L 100,${totalH} L 0,${totalH}` : `L 100,${y2} Q 50,${y2 + d} 0,${y2}`;
+            const pathD  = `${top} ${bottom} Z`;
+            return (
+              <motion.path
+                key={era.id}
+                animate={{ d: pathD }}
+                transition={{ type: "spring", stiffness: 220, damping: 18, mass: 1.1 }}
+                fill={eraColor(era.id).bg}
+                onMouseEnter={() => setHoveredEraId(era.id)}
+                onMouseLeave={() => setHoveredEraId(null)}
+                style={{ cursor: "default" }}
+              />
+            );
+          });
+        })()}
+      </svg>
+
+      {/* Era labels */}
+      {eras.map(era => {
+        const y1 = yearToY(parseYear(era.startLabel));
+        const y2 = yearToY(parseYear(era.endLabel));
+        if (y2 <= y1) return null;
+        const bandH = y2 - y1;
+        const { text } = eraColor(era.id);
+        return (
+          <div
+            key={era.id}
+            className="pointer-events-none absolute"
+            style={{ top: y1, height: bandH, left: "calc(50% - 50vw)", width: "100vw" }}
+          >
+            <motion.div
+              className="absolute left-8 top-6 font-black tracking-tight leading-none"
+              animate={{ scale: hoveredEraId === era.id ? 1.12 : 1 }}
+              transition={{ type: "spring", stiffness: 220, damping: 18, mass: 1.1 }}
+              style={{ fontSize: 36, color: text, originX: 0, originY: 0.5 }}
+            >
+              {era.title}
+            </motion.div>
+          </div>
+        );
+      })}
+
       <svg className="pointer-events-none absolute inset-0" width={cw} height={totalH}>
         <defs>
           <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor="white" stopOpacity="0"   />
-            <stop offset="5%"   stopColor="white" stopOpacity="0.55"/>
-            <stop offset="95%"  stopColor="white" stopOpacity="0.55"/>
-            <stop offset="100%" stopColor="white" stopOpacity="0"   />
+            <stop offset="0%"   stopColor="white" stopOpacity="1"   />
+            <stop offset="100%" stopColor="white" stopOpacity="1"   />
           </linearGradient>
         </defs>
 
-        {/* Era color bands */}
+        {/* Era color bands on center line */}
         {eras.map(era => {
           const y1 = yearToY(parseYear(era.startLabel));
           const y2 = yearToY(parseYear(era.endLabel));
@@ -311,8 +392,8 @@ export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras:
               key={era.id}
               x={cx - 7.5} y={y1}
               width={15} height={Math.max(y2 - y1, 4)}
-              fill={eraFill(era.bgClass)}
-              opacity={0.35}
+              fill={eraColor(era.id).text}
+              opacity={0.5}
               rx={7.5}
             />
           );
@@ -328,20 +409,23 @@ export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras:
           rx={7.5}
         />
 
-        {/* Event dots with year labels — no connectors */}
+        {/* Event dots with year labels */}
         {positioned.map(({ event, trueY: ty, side }) => {
           const year = parseYear(event.dateLabel);
           const labelX  = side === "left" ? cx + 22 : cx - 22;
           const anchor  = side === "left" ? "start"  : "end";
+          const shift = eraShifts.get(event.id) ?? 0;
 
           return (
-            <g key={event.id}>
+            <motion.g
+              key={event.id}
+              animate={{ y: shift }}
+              transition={{ type: "spring", stiffness: 220, damping: 18, mass: 1.1 }}
+            >
               {/* Dot halo */}
               <circle cx={cx} cy={ty} r={11}  fill="rgba(237,117,72,0.18)" />
               {/* Dot */}
               <circle cx={cx} cy={ty} r={8}   fill="rgb(237,117,72)" />
-              {/* Dot centre */}
-              <circle cx={cx} cy={ty} r={3.5} fill="rgba(255,255,255,0.9)" />
               {/* Year label */}
               <text
                 x={labelX}
@@ -354,16 +438,18 @@ export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras:
               >
                 {year < 0 ? `${Math.abs(year)} BCE` : year}
               </text>
-            </g>
+            </motion.g>
           );
         })}
       </svg>
 
       {/* Event cards */}
       {positioned.map(({ event, cardY, side }) => (
-        <div
+        <motion.div
           key={event.id}
           className="absolute"
+          animate={{ y: eraShifts.get(event.id) ?? 0 }}
+          transition={{ type: "spring", stiffness: 220, damping: 18, mass: 1.1 }}
           style={{
             top: cardY,
             ...(side === "left"
@@ -372,7 +458,7 @@ export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras:
           }}
         >
           <EventCard event={event} />
-        </div>
+        </motion.div>
       ))}
     </div>
   );
