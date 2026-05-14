@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
-import { animate, motion, useDragControls, useMotionValue } from "framer-motion";
+import { animate, motion, useDragControls, useMotionValue, useTransform } from "framer-motion";
 import { ChatPanel } from "./features/chat/ChatPanel";
 import type { ChatMessage } from "./features/chat/ChatPanel";
 import { TimelinePanel } from "./features/timeline/TimelinePanel";
@@ -45,6 +45,10 @@ export default function App() {
   const panelX = useMotionValue(window.innerWidth - PANEL_W - MARGIN);
   const panelY = useMotionValue(window.innerHeight - 460 - MARGIN);
   const scrollY = useMotionValue(0);
+  // Padding lets every event scroll into the focal zone.
+  // scrollYOffset compensates so PerspCard's math stays correct.
+  const PERSP_PAD = Math.round(window.innerHeight * 0.52);
+  const scrollYOffset = useTransform(scrollY, (sy) => sy - PERSP_PAD);
   const currentCorner = useRef<Corner>("br");
 
   const SPRING = { type: "spring", stiffness: 200, damping: 30, mass: 1 } as const;
@@ -146,8 +150,8 @@ export default function App() {
         onScroll={(e) => scrollY.set(e.currentTarget.scrollTop)}
         className="h-full w-full overflow-x-hidden overflow-y-auto"
       >
-        <div className="mx-auto max-w-3xl px-4">
-          <TimelinePanel events={events} eras={eras} scrollY={scrollY} />
+        <div className="mx-auto max-w-3xl px-4" style={{ paddingTop: PERSP_PAD, paddingBottom: PERSP_PAD }}>
+          <TimelinePanel events={events} eras={eras} scrollY={scrollYOffset} />
         </div>
       </div>
 
