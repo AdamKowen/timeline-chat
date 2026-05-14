@@ -44,6 +44,7 @@ export default function App() {
   const panelRef = useRef<HTMLDivElement>(null);
   const panelX = useMotionValue(window.innerWidth - PANEL_W - MARGIN);
   const panelY = useMotionValue(window.innerHeight - 460 - MARGIN);
+  const scrollY = useMotionValue(0);
   const currentCorner = useRef<Corner>("br");
 
   const SPRING = { type: "spring", stiffness: 200, damping: 30, mass: 1 } as const;
@@ -141,9 +142,12 @@ export default function App() {
       />
 
       {/* Timeline — scrollable, transparent so sky shows through */}
-      <div className="h-full w-full overflow-x-hidden overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-8">
-          <TimelinePanel events={events} eras={eras} />
+      <div
+        onScroll={(e) => scrollY.set(e.currentTarget.scrollTop)}
+        className="h-full w-full overflow-x-hidden overflow-y-auto"
+      >
+        <div className="mx-auto max-w-3xl px-4">
+          <TimelinePanel events={events} eras={eras} scrollY={scrollY} />
         </div>
       </div>
 

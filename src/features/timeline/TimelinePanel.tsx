@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useTransform } from "framer-motion";
+import type { MotionValue } from "framer-motion";
 import { ExternalLink, Info } from "lucide-react";
 import type { TimelineEra, TimelineEvent } from "../../shared/types/timeline";
 
@@ -208,7 +209,59 @@ function EventCard({ event }: { event: TimelineEvent }) {
   );
 }
 
-export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras: TimelineEra[] }) {
+// ── Perspective helpers (module-level, no React deps) ─────────────────────
+const FOCAL = 0.52;
+
+function calcScale(viewportY: number, vh: number): number {
+  const t = viewportY / vh;
+  if (t <= FOCAL) return 0.18 + Math.max(0, t) / FOCAL * 0.82;
+  return 1.0 - (t - FOCAL) / (1 - FOCAL) * 0.52;
+}
+
+function calcOpacity(viewportY: number, vh: number): number {
+  const t = viewportY / vh;
+  if (t < 0 || t > 1.05) return 0;
+  if (t < 0.09) return t / 0.09;
+  if (t > 0.93) return (1.05 - t) / 0.12;
+  return 1;
+}
+
+function PerspCard({ event, cardY, side, scrollY, cx, cardW, eraShift }: {
+  event: TimelineEvent;
+  cardY: number;
+  side: "left" | "right";
+  scrollY: MotionValue<number>;
+  cx: number;
+  cardW: number;
+  eraShift: number;
+}) {
+  const vh = window.innerHeight;
+  const scale   = useTransform(scrollY, (sy) => calcScale(cardY - sy, vh));
+  const opacity = useTransform(scrollY, (sy) => calcOpacity(cardY - sy, vh));
+  const zIndex  = useTransform(scrollY, (sy) => Math.round(calcScale(cardY - sy, vh) * 10));
+
+  return (
+    <motion.div
+      className="absolute"
+      style={{
+        top: cardY,
+        scale,
+        opacity,
+        zIndex,
+        transformOrigin: "top center",
+        ...(side === "left"
+          ? { right: cx + 16, width: cardW }
+          : { left:  cx + 16, width: cardW }),
+      }}
+      animate={{ y: eraShift }}
+      transition={{ type: "spring", stiffness: 220, damping: 18, mass: 1.1 }}
+    >
+      <EventCard event={event} />
+    </motion.div>
+  );
+}
+
+export function TimelinePanel({ events, eras, scrollY }: { events: TimelineEvent[]; eras: TimelineEra[]; scrollY: MotionValue<number> }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [cw, setCw] = useState(760);
   const [hoveredEraId, setHoveredEraId] = useState<string | null>(null);
@@ -291,6 +344,8 @@ export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras:
     ? 300
     : Math.max(...positioned.map(p => p.cardY)) + BOTTOM_PAD + 110;
 
+  const eraH = Math.max(totalH, window.innerHeight);
+
   const ticks = useMemo(() => {
     const interval = getTickInterval(range);
     const first = Math.ceil(minYear / interval) * interval;
@@ -312,13 +367,13 @@ export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras:
   }
 
   return (
-    <div ref={containerRef} className="relative w-full" style={{ height: totalH }}>
+    <div ref={containerRef} className="relative w-full" style={{ height: eraH }}>
 
-      {/* Era blobs — full-bleed SVG, painted top→bottom; motion.path animates curve depth on hover */}
+      {/* Era blobs — full-bleed SVG, painted top→bottom */}
       <svg
         className="absolute"
-        style={{ top: 0, left: "calc(50% - 50vw)", width: "100vw", height: totalH }}
-        viewBox={`0 0 100 ${totalH}`}
+        style={{ top: 0, left: "calc(50% - 50vw)", width: "100vw", height: eraH }}
+        viewBox={`0 0 100 ${eraH}`}
         preserveAspectRatio="none"
       >
         {(() => {
@@ -331,8 +386,8 @@ export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras:
             const d = hovered ? 72 : 40;
             const isFirst = idx === 0;
             const isLast  = idx === sorted.length - 1;
-            const top    = isFirst ? `M 0,0 L 100,0`               : `M 0,${y1} Q 50,${y1 - d} 100,${y1}`;
-            const bottom = isLast  ? `L 100,${totalH} L 0,${totalH}` : `L 100,${y2} Q 50,${y2 + d} 0,${y2}`;
+            const top    = isFirst ? `M 0,0 L 100,0`              : `M 0,${y1} Q 50,${y1 - d} 100,${y1}`;
+            const bottom = isLast  ? `L 100,${eraH} L 0,${eraH}` : `L 100,${y2} Q 50,${y2 + d} 0,${y2}`;
             const pathD  = `${top} ${bottom} Z`;
             return (
               <motion.path
@@ -443,22 +498,18 @@ export function TimelinePanel({ events, eras }: { events: TimelineEvent[]; eras:
         })}
       </svg>
 
-      {/* Event cards */}
+      {/* Event cards — perspective driven by scrollY MotionValue, zero re-renders */}
       {positioned.map(({ event, cardY, side }) => (
-        <motion.div
+        <PerspCard
           key={event.id}
-          className="absolute"
-          animate={{ y: eraShifts.get(event.id) ?? 0 }}
-          transition={{ type: "spring", stiffness: 220, damping: 18, mass: 1.1 }}
-          style={{
-            top: cardY,
-            ...(side === "left"
-              ? { right: cx + 16, width: cardW }
-              : { left:  cx + 16, width: cardW }),
-          }}
-        >
-          <EventCard event={event} />
-        </motion.div>
+          event={event}
+          cardY={cardY}
+          side={side}
+          scrollY={scrollY}
+          cx={cx}
+          cardW={cardW}
+          eraShift={eraShifts.get(event.id) ?? 0}
+        />
       ))}
     </div>
   );
